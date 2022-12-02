@@ -14,16 +14,14 @@ struct Cli {
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
 
-    let mut maxcals = 0;
+    let mut calories = Vec::new();
     let mut thiscals = 0;
 
     for line in cli.input.get_input()?.lines() {
         if let Ok(line) = line {
             let line = line.trim();
             if line.is_empty() {
-                if thiscals > maxcals {
-                    maxcals = thiscals;
-                }
+                calories.push(thiscals);
                 thiscals = 0;
             } else {
                 thiscals += line.parse::<u32>().unwrap();
@@ -31,7 +29,14 @@ fn main() -> io::Result<()> {
         }
     }
 
+    calories.sort();
+
+    let maxcals = calories.last().unwrap();
     println!("Maximum calories is {maxcals}");
+
+    let top3 : u32 = (calories[calories.len()-3..].iter()).sum();
+
+    println!("Combined calories of top3 is {top3}");
 
     Ok(())
 }
