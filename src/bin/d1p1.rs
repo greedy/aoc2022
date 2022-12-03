@@ -11,7 +11,8 @@ struct Cli {
     input: InputCLI<1>
 }
 
-fn main() -> io::Result<()> {
+fn main() -> color_eyre::Result<()> {
+    color_eyre::install()?;
     let cli = Cli::parse();
 
     let mut calories = Vec::new();

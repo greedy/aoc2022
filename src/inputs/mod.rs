@@ -5,6 +5,8 @@ use std::io::{BufRead, BufReader, Read};
 use std::fs::File;
 use std::io::{self, ErrorKind};
 
+use color_eyre::eyre::Result;
+
 mod cache;
 
 #[derive(Clone)]
@@ -32,7 +34,7 @@ pub struct InputCLI<const DAY: u32> {
 }
 
 impl<const DAY: u32> InputCLI<DAY> {
-    pub fn get_input_read(&self) -> io::Result<Box<dyn Read>> {
+    pub fn get_input_read(&self) -> Result<Box<dyn Read>> {
         match &self.source {
             Some(OverrideInputSource::Stdin) => Ok(Box::new(std::io::stdin())),
             Some(OverrideInputSource::File(path)) => Ok(Box::new(File::open(path)?)),
@@ -47,7 +49,7 @@ impl<const DAY: u32> InputCLI<DAY> {
         }
     }
 
-    pub fn get_input(&self) -> io::Result<impl BufRead> {
+    pub fn get_input(&self) -> Result<impl BufRead> {
         Ok(BufReader::new(self.get_input_read()?))
     }
 }

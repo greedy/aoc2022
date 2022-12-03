@@ -129,7 +129,8 @@ impl Round {
     }
 }
 
-fn main() -> io::Result<()> {
+fn main() -> color_eyre::Result<()> {
+    color_eyre::install()?;
     let cli = Cli::parse();
 
     let mut total_score = 0;

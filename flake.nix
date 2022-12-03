@@ -15,7 +15,7 @@
         defaultPackage = naersk-lib.buildPackage ./.;
         devShell = with pkgs; mkShell {
           buildInputs =
-            [ cargo rustc rustfmt pre-commit rustPackages.clippy ]
+            [ cargo rustc rustfmt pre-commit rustPackages.clippy rust-analyzer ]
             ++ nixpkgs.lib.optional stdenv.isDarwin (with darwin.apple_sdk.frameworks; [ Security ]);
           RUST_SRC_PATH = rustPlatform.rustLibSrc;
         };
