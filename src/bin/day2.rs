@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::io;
+
 use std::io::prelude::*;
 use parse_display::{Display, FromStr};
 

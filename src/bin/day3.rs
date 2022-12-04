@@ -1,9 +1,9 @@
 use clap::Parser;
-use std::{io, ascii::AsciiExt};
+
 use std::io::prelude::*;
 use std::str::FromStr;
 use color_eyre::eyre::{Report, Result, bail};
-use itertools::{process_results, Itertools};
+use itertools::{Itertools};
 
 use aoc2022::inputs::InputCLI;
 
@@ -41,9 +41,9 @@ mod item {
         fn try_from(c: char) -> Result<Self> {
             let priority : u8 =
                 if c.is_ascii_uppercase() {
-                    (c as u8) - ('A' as u8) + 27
+                    (c as u8) - b'A' + 27
                 } else if c.is_ascii_lowercase() {
-                    (c as u8) - ('a' as u8) + 1
+                    (c as u8) - b'a' + 1
                 } else {
                     bail!("Item character must be ascii alphabetic");
                 };
@@ -175,7 +175,7 @@ fn main() -> color_eyre::Result<()> {
     let rucksacks : Vec<_> =
         cli.input.get_input()?.lines()
         .map(|r| r.map_err(Report::from))
-        .map(|r| r.and_then(|s| Rucksack::from_str(&s.as_str())))
+        .map(|r| r.and_then(|s| Rucksack::from_str(s.as_str())))
         .try_collect()?;
 
 
