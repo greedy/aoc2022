@@ -17,6 +17,7 @@ mod item {
     use color_eyre::eyre::{Report, Result, bail};
     use std::str::FromStr;
 
+    #[derive(Clone, Copy, Debug)]
     pub struct Item {
         priority: u8
     }
@@ -61,6 +62,8 @@ mod item {
         }
     }
 
+
+    #[derive(Clone, Copy)]
     pub struct ItemSet(u64);
 
     impl Default for ItemSet {
@@ -73,11 +76,11 @@ mod item {
             self.0 |= 1 << item.priority
         }
 
-        pub fn with(&self, item: Item) {
+        pub fn with(self, item: Item) {
             Self(self.0 | (1 << item.priority));
         }
 
-        pub fn intersection(&self, other: Self) -> Self {
+        pub fn intersection(self, other: Self) -> Self {
             Self(self.0 & other.0)
         }
 
@@ -85,7 +88,7 @@ mod item {
             self.0 &= other.0
         }
 
-        pub fn union(&self, other: Self) -> Self {
+        pub fn union(self, other: Self) -> Self {
             Self(self.0 | other.0)
         }
 
@@ -93,15 +96,16 @@ mod item {
             self.0 |= other.0
         }
 
-        pub fn iter(&self) -> SetIter {
+        pub fn iter(self) -> SetIter {
             SetIter::new(self)
         }
     }
 
+    #[derive(Debug)]
     pub struct SetIter(bit_iter::BitIter<u64>);
 
     impl SetIter {
-        fn new(s: &ItemSet) -> Self {
+        fn new(s: ItemSet) -> Self {
             SetIter(bit_iter::BitIter::from(s.0))
         }
     }
@@ -136,9 +140,17 @@ mod item {
     }
 }
 
+
+#[derive(Clone, Copy)]
 struct Rucksack {
     first_compartment: item::ItemSet,
     second_compartment: item::ItemSet
+}
+
+impl Rucksack {
+    pub fn all_items(&self) -> item::ItemSet {
+        self.first_compartment.union(self.second_compartment)
+    }
 }
 
 impl<'a> FromStr for Rucksack {
@@ -160,17 +172,35 @@ fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
 
-    let total_dup_priority : usize = process_results(
+    let rucksacks : Vec<_> =
         cli.input.get_input()?.lines()
         .map(|r| r.map_err(Report::from))
-        .map(|r| r.and_then(|s| Rucksack::from_str(&s.as_str()))),
-        |r| r.flat_map(|r| r.first_compartment.intersection(r.second_compartment))
+        .map(|r| r.and_then(|s| Rucksack::from_str(&s.as_str())))
+        .try_collect()?;
+
+
+    let total_dup_priority : usize = 
+        rucksacks.iter().flat_map(|r| r.first_compartment.intersection(r.second_compartment))
         .map(item::Item::priority)
         .map(usize::from)
-        .sum()
-    )?;
+        .sum();
 
     println!("Sum of the prorities of duplicate items is {total_dup_priority}");
+
+    let badge_priority_total : usize = rucksacks.iter().chunks(3).into_iter()
+        .map(|group| {
+            group.map(Rucksack::all_items)
+            .reduce(item::ItemSet::intersection)
+            .unwrap()
+            .iter()
+            .exactly_one()
+            .unwrap()
+        })
+        .map(item::Item::priority)
+        .map(usize::from)
+        .sum();
+
+    println!("Sum of badge priorities is {badge_priority_total}");
 
     Ok(())
 }
