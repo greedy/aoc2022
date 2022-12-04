@@ -20,6 +20,10 @@ impl Assignment {
     pub fn redundant_with(&self, other: &Assignment) -> bool {
         self.0.start >= other.0.start && self.0.end <= other.0.end
     }
+
+    pub fn overlaps(&self, other: &Assignment) -> bool {
+        self.0.start < other.0.end && self.0.end > other.0.start
+    }
 }
 
 impl FromStr for Assignment {
@@ -39,6 +43,10 @@ struct AssignmentPair(Assignment, Assignment);
 impl AssignmentPair {
     pub fn has_redundant(&self) -> bool {
         self.0.redundant_with(&self.1) || self.1.redundant_with(&self.0)
+    }
+
+    pub fn has_overlap(&self) -> bool {
+        self.0.overlaps(&self.1)
     }
 }
 
@@ -65,6 +73,12 @@ fn main() -> Result<()> {
         .count();
 
     println!("{redundant_pair_count} pairs have a redundant range");
+
+    let overlapping_pair_count = assignments.iter()
+        .filter(|p| p.has_overlap())
+        .count();
+
+    println!("{overlapping_pair_count} pairs have any overlap");
 
     Ok(())
 }
