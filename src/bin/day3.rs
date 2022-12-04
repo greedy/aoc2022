@@ -66,6 +66,7 @@ mod item {
     #[derive(Clone, Copy)]
     pub struct ItemSet(u64);
 
+    #[allow(clippy::derivable_impls)]
     impl Default for ItemSet {
         fn default() -> Self { ItemSet(0) }
     }
@@ -76,6 +77,7 @@ mod item {
             self.0 |= 1 << item.priority
         }
 
+        #[allow(dead_code)]
         pub fn with(self, item: Item) {
             Self(self.0 | (1 << item.priority));
         }
@@ -84,6 +86,7 @@ mod item {
             Self(self.0 & other.0)
         }
 
+        #[allow(dead_code)]
         pub fn intersect_with(&mut self, other: Self) {
             self.0 &= other.0
         }
@@ -92,6 +95,7 @@ mod item {
             Self(self.0 | other.0)
         }
 
+        #[allow(dead_code)]
         pub fn union_with(&mut self, other: Self) {
             self.0 |= other.0
         }
@@ -153,7 +157,7 @@ impl Rucksack {
     }
 }
 
-impl<'a> FromStr for Rucksack {
+impl FromStr for Rucksack {
     type Err = Report;
 
     fn from_str(s: &str) -> Result<Self> {

@@ -1,6 +1,6 @@
-use std::io::{ErrorKind, Seek, Write};
+use std::io::{ErrorKind, Seek};
 use std::fs::File;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use reqwest::blocking::{Client, Response};
 use reqwest::cookie::Jar;
 use reqwest::Url;

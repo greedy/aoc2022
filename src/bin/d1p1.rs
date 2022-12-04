@@ -18,15 +18,13 @@ fn main() -> color_eyre::Result<()> {
     let mut calories = Vec::new();
     let mut thiscals = 0;
 
-    for line in cli.input.get_input()?.lines() {
-        if let Ok(line) = line {
-            let line = line.trim();
-            if line.is_empty() {
-                calories.push(thiscals);
-                thiscals = 0;
-            } else {
-                thiscals += line.parse::<u32>().unwrap();
-            }
+    for line in cli.input.get_input()?.lines().flatten() {
+        let line = line.trim();
+        if line.is_empty() {
+            calories.push(thiscals);
+            thiscals = 0;
+        } else {
+            thiscals += line.parse::<u32>().unwrap();
         }
     }
 

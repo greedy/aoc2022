@@ -39,7 +39,7 @@ impl<const DAY: u32> InputCLI<DAY> {
             Some(OverrideInputSource::Stdin) => Ok(Box::new(std::io::stdin())),
             Some(OverrideInputSource::File(path)) => Ok(Box::new(File::open(path)?)),
             None => {
-                let cache = cache::Cache::default().ok_or(io::Error::new(ErrorKind::Other, "Couldn't create cache"))?;
+                let cache = cache::Cache::default().ok_or_else(|| io::Error::new(ErrorKind::Other, "Couldn't create cache"))?;
                 if self.refresh {
                     Ok(Box::new(cache.download_input(DAY)?))
                 } else {

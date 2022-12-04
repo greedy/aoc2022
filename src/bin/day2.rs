@@ -11,11 +11,6 @@ struct Cli {
     input: InputCLI<2>
 }
 
-enum Player {
-    Us,
-    Them
-}
-
 #[derive(Debug, Display, FromStr)]
 enum OpponentPlay {
     #[display("A")]
