@@ -14,10 +14,10 @@
       in
       {
         defaultPackage = naersk-lib.buildPackage ./.;
-        devShell = with pkgs; with rust-bin.stable.latest.default;
+        devShell = with pkgs; with rust-bin.stable.latest;
         mkShell {
           buildInputs =
-            [ rust-bin.stable.latest.default ] # cargo rustc rustfmt pre-commit rustPackages.clippy rust-analyzer ]
+            [ rust-bin.stable.latest.default rust-analyzer clippy ] # cargo rustc rustfmt pre-commit rustPackages.clippy rust-analyzer ]
             ++ nixpkgs.lib.optional stdenv.isDarwin (with darwin.apple_sdk.frameworks; [ Security ]);
           RUST_SRC_PATH = rustPlatform.rustLibSrc;
         };
