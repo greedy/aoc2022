@@ -11,5 +11,6 @@ clap = { version = "4.0.29", features = ["derive"] }
 color-eyre = "0.6.2"
 directories = "4.0"
 itertools = "0.10.5"
+nom = "7.1.1"
 parse-display = "0.6.0"
 reqwest = { version = "0.11.13", features = ["blocking", "cookies"] }
