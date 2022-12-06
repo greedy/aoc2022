@@ -23,8 +23,14 @@ impl Crate {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Ship {
     stacks: Vec<Vec<Crate>>
+}
+
+enum Mode {
+    Part1,
+    Part2
 }
 
 impl Ship {
@@ -32,7 +38,7 @@ impl Ship {
         let stacks = vec![vec![]; nstacks];
         Self { stacks }
     }
-    fn execute(&mut self, step: &Step) -> Result<()> {
+    fn execute(&mut self, step: &Step, mode: Mode) -> Result<()> {
         let (before_from, from_and_after) = self.stacks.split_at_mut(step.from_stack - 1);
         let (from_stack, after_from) =
             from_and_after.split_first_mut()
@@ -48,14 +54,23 @@ impl Ship {
                 bail!("From stack and to stack are both {}", step.from_stack)
             };
 
+        /*
         println!("moving {} from {} to {}", step.crate_count, step.from_stack, step.to_stack);
         println!("Stack {}: {:?}", step.from_stack, from_stack);
         println!("Stack {}: {:?}", step.to_stack, to_stack);
+        */
 
-        from_stack
-            .drain((from_stack.len()-step.crate_count)..)
-            .rev()
-            .for_each(|c| to_stack.push(c));
+        match mode {
+            Mode::Part1 =>
+                from_stack
+                .drain((from_stack.len()-step.crate_count)..)
+                .rev()
+                .for_each(|c| to_stack.push(c)),
+            Mode::Part2 =>
+                from_stack
+                .drain((from_stack.len()-step.crate_count)..)
+                .for_each(|c| to_stack.push(c))
+            };
 
         Ok(())
     }
@@ -152,9 +167,18 @@ fn main() -> Result<()> {
     let input_str = input.as_str();
     let (_, (mut ship, steps)) = parsing::problem(input_str).map_err(|e| e.to_owned())?;
 
-    steps.iter().map(|step| ship.execute(step)).try_collect()?;
+    let mut extra_ship = ship.clone();
 
+    steps.iter().map(|step| ship.execute(step, Mode::Part1)).try_collect()?;
+
+    print!("Part1 answer: ");
     ship.stacks.iter().for_each(|stack| print!("{}", stack.last().map(|c| Crate::label(*c)).unwrap_or(' ')));
+    println!();
+
+    steps.iter().map(|step| extra_ship.execute(step, Mode::Part2)).try_collect()?;
+
+    print!("Part2 answer: ");
+    extra_ship.stacks.iter().for_each(|stack| print!("{}", stack.last().map(|c| Crate::label(*c)).unwrap_or(' ')));
     println!();
 
     Ok(())
