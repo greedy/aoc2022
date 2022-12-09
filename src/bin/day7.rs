@@ -331,5 +331,29 @@ fn main() -> Result<()> {
 
     println!("sum of the total sizes of those directories is {}", total);
 
+    let total_space = 70000000;
+
+    let needed_space = 30000000;
+
+    let used_space = shell.filesystem.dir_size(0).unwrap();
+
+    let free_space = total_space - used_space;
+
+    let need_to_free = needed_space - free_space;
+
+    if let Some((size, name)) = shell.filesystem.directories()
+        .filter_map(|(inode, d)| {
+            let size = shell.filesystem.dir_size(inode).unwrap();
+            if size >= need_to_free {
+                Some((size, d.name.clone()))
+            } else {
+                None
+            }
+        })
+    .min_by_key(|x| x.0)
+    {
+        println!("you should delete {} to free up {} bytes", name, size);
+    }
+
     Ok(())
 }
