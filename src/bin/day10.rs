@@ -82,6 +82,11 @@ impl Communicator {
     pub fn signal_strength(&self) -> i32 {
         self.current_cycle * self.x_register
     }
+
+    pub fn reset(&mut self) {
+        self.current_cycle = 1;
+        self.x_register = 1;
+    }
 }
 
 struct Execution<'a, 'i, II> {
@@ -99,8 +104,23 @@ impl<'a, 'i, II: Iterator<Item=&'i Instruction>> Execution<'a, 'i, II> {
     }
 }
 
+struct State {
+    cycle: i32,
+    x: i32
+}
+
+impl State {
+    pub fn signal_strength(&self) -> i32 {
+        self.cycle * self.x
+    }
+
+    pub fn of(c: &Communicator) -> Self {
+        Self { cycle: c.current_cycle, x: c.x_register }
+    }
+}
+
 impl<'a, 'i, II: Iterator<Item=&'i Instruction>> Iterator for Execution<'a, 'i, II> {
-    type Item = (i32, i32);
+    type Item = State;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.current_instruction {
@@ -112,7 +132,7 @@ impl<'a, 'i, II: Iterator<Item=&'i Instruction>> Iterator for Execution<'a, 'i, 
                     self.instruction_cycle = 0;
                     self.current_instruction = self.instructions.next();
                 }
-                Some((self.communicator.current_cycle, self.communicator.signal_strength()))
+                Some(State::of(self.communicator))
             }
         }
     }
@@ -127,12 +147,26 @@ fn main() -> Result<()> {
     let mut communicator = Communicator::new();
 
     let sum_of_strengths : i32 = communicator.execute(&mut program.iter())
-        .filter(|(cycle, _)| *cycle >= 20 && (*cycle - 20) % 40 == 0)
-        .inspect(|(cycle, signal_strength)| println!("Cycle {} Signal-stregth {}", cycle, signal_strength))
-        .map(|x| x.1)
+        .filter(|s| s.cycle >= 20 && (s.cycle - 20) % 40 == 0)
+        .inspect(|s| println!("Cycle {} Signal-stregth {}", s.cycle, s.signal_strength()))
+        .map(|s| s.signal_strength())
         .sum();
 
     println!("Sum of signal strengths: {}", sum_of_strengths);
+
+    communicator.reset();
+
+    for scan_line in &(std::iter::once(State::of(&communicator)).chain(communicator.execute(&mut program.iter()))).chunks(40) {
+        let line = scan_line.enumerate().map(|(pixel, s)| {
+            if i32::abs((pixel as i32) - s.x) <= 1 {
+                "#"
+            } else {
+                "."
+            }
+        }).join("");
+        println!("{}", line);
+    }
+        
 
     Ok(())
 }
