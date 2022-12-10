@@ -1,5 +1,5 @@
 use aoc2022::prelude::*;
-use std::{collections::HashSet, str::FromStr};
+use std::{collections::HashSet, str::FromStr, fmt::Display};
 
 #[derive(Parser)]
 struct Cli {
@@ -9,6 +9,12 @@ struct Cli {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 struct Coord { x: isize, y: isize }
+
+impl Display for Coord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {})", self.x, self.y)
+    }
+}
 
 impl Coord {
     fn adjust(&mut self, direction: Direction) {
@@ -97,24 +103,18 @@ impl Motion {
     }
 }
 
-struct Rope {
-    head_pos: Coord,
-    tail_pos: Coord,
-    tail_image: HashSet<Coord>,
-    head_image: HashSet<Coord>,
+struct Rope<const N: usize> {
+    knots: [Coord; N],
+    images: [HashSet<Coord>; N],
 }
 
-impl Rope {
+impl<const N:usize> Rope<N> {
     pub fn new() -> Self {
-        let mut head_image = HashSet::new();
-        let mut tail_image = HashSet::new();
-        head_image.insert((0, 0).into());
-        tail_image.insert((0, 0).into());
+        let knots = [(0,0).into(); N];
+        let images = knots.map(|p| HashSet::from([p]));
         Self {
-            head_pos: (0, 0).into(),
-            tail_pos: (0, 0).into(),
-            head_image,
-            tail_image,
+            knots,
+            images
         }
     }
 
@@ -125,42 +125,43 @@ impl Rope {
     }
 
     fn move_head(&mut self, direction: Direction) {
-        self.head_pos.adjust(direction);
-        debug_assert!(isize::abs(self.tail_pos.y - self.head_pos.y) <= 2);
-        debug_assert!(isize::abs(self.tail_pos.x - self.head_pos.x) <= 2);
-        debug_assert!(
-            (isize::abs(self.tail_pos.y - self.head_pos.y) +
-             isize::abs(self.tail_pos.x - self.head_pos.x))
-            <= 3);
-        if self.head_pos.x == self.tail_pos.x + 2 {
-            self.tail_pos.x += 1;
-            if self.head_pos.y != self.tail_pos.y {
-                debug_assert!(isize::abs(self.tail_pos.y - self.head_pos.y) == 1);
-                self.tail_pos.y = self.head_pos.y
+        //println!("Moving {:?}", direction);
+        self.knots[0].adjust(direction);
+        self.images[0].insert(self.knots[0]);
+        //println!("0: {}", self.knots[0]);
+        for follower_index in (1..N) {
+            let (_, rest) = self.knots.split_at_mut(follower_index - 1);
+            let (leader, rest) = rest.split_first_mut().unwrap();
+            let (follower, _) = rest.split_first_mut().unwrap();
+            debug_assert!(isize::abs(follower.y - leader.y) <= 2, "index={}, follower={}, leader={}", follower_index, follower, leader);
+            debug_assert!(isize::abs(follower.x - leader.x) <= 2, "index={}, follower={}, leader={}", follower_index, follower, leader);
+            /*
+            debug_assert!(
+                (isize::abs(follower.y - leader.y) +
+                 isize::abs(follower.x - leader.x))
+                <= 3,
+                "index={}, follower={}, leader={}", follower_index, follower, leader);
+            */
+            let dx = leader.x - follower.x;
+            let dy = leader.y - follower.y;
+            match (dx,dy) {
+                (0,0) => (),
+                (1,0) | (-1,0) | (0,1) | (0,-1) => (),
+                (1,1) | (1,-1) | (-1,-1) | (-1,1) => (),
+                (2,0) => follower.x += 1,
+                (-2,0) => follower.x -= 1,
+                (0,2) => follower.y += 1,
+                (0,-2) => follower.y -= 1,
+                (2,2) | (2,1) | (1,2) => { follower.x += 1; follower.y += 1 },
+                (2,-2) | (2,-1) | (1,-2) => { follower.x += 1; follower.y -= 1 },
+                (-2,-2) | (-2,-1) | (-1,-2) => { follower.x -= 1; follower.y -= 1 },
+                (-2,2) | (-2,1) | (-1,2) => { follower.x -= 1; follower.y += 1 },
+                _ => panic!("Impossible (dx,dy) = ({},{})", dx, dy)
             }
-        } else if self.head_pos.x == self.tail_pos.x - 2 {
-            self.tail_pos.x -= 1;
-            if self.head_pos.y != self.tail_pos.y {
-                debug_assert!(isize::abs(self.tail_pos.y - self.head_pos.y) == 1);
-                self.tail_pos.y = self.head_pos.y
-            }
-        } else if self.head_pos.y == self.tail_pos.y + 2 {
-            self.tail_pos.y += 1;
-            if self.head_pos.x != self.tail_pos.x {
-                debug_assert!(isize::abs(self.tail_pos.x - self.head_pos.x) == 1);
-                self.tail_pos.x = self.head_pos.x;
-            }
-        } else if self.head_pos.y == self.tail_pos.y - 2 {
-            self.tail_pos.y -= 1;
-            if self.head_pos.x != self.tail_pos.x {
-                debug_assert!(isize::abs(self.tail_pos.x - self.head_pos.x) == 1);
-                self.tail_pos.x = self.head_pos.x;
-            }
+            debug_assert!(isize::abs(follower.x - leader.x) <= 1, "After moving, knots not touching! index={}, follower={}, leader={}", follower_index, follower, leader);
+            self.images[follower_index].insert(*follower);
+            //println!("{}: {}", follower_index, follower);
         }
-        debug_assert!(isize::abs(self.tail_pos.y - self.head_pos.y) <= 1);
-        debug_assert!(isize::abs(self.tail_pos.x - self.head_pos.x) <= 1);
-        self.head_image.insert(self.head_pos);
-        self.tail_image.insert(self.tail_pos);
     }
 }
 
@@ -168,7 +169,8 @@ fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
 
-    let mut rope = Rope::new();
+    let mut rope2 : Rope<2> = Rope::new();
+    let mut rope10 : Rope<10> = Rope::new();
 
     for line in cli.input.get_input()?.lines() {
         let line = line?;
@@ -176,10 +178,12 @@ fn main() -> Result<()> {
         let (dir, amount) = line.split_once(' ').ok_or_else(|| eyre!("Expected a direction and distance separated by space"))?;
         let motion = Motion::new(dir.parse()?, amount.parse()?);
 
-        rope.apply(&motion);
+        rope2.apply(&motion);
+        rope10.apply(&motion);
     }
 
-    println!("The rope tail visits {} locations", rope.tail_image.len());
+    println!("Part 1: The rope tail visits {} locations", rope2.images[1].len());
+    println!("Part 2: The rope tail visits {} locations", rope10.images[9].len());
 
     Ok(())
 }
