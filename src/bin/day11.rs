@@ -95,10 +95,12 @@ impl<'a, T> Iterator for IterAroundMutSlice<'a, T> where Self: 'a {
 }
 */
 
+#[derive(Clone)]
 struct Item {
     worry: i64
 }
 
+#[derive(Clone)]
 enum Expression {
     OldValue,
     Constant(i64),
@@ -118,6 +120,7 @@ impl From<i64> for Box<Expression> {
     }
 }
 
+#[derive(Clone)]
 enum Test {
     DivisibleBy(i64)
 }
@@ -147,6 +150,7 @@ impl Item {
     }
 }
 
+#[derive(Clone)]
 struct Monkey {
     id: usize,
     held_items: Vec<Item>,
@@ -190,6 +194,24 @@ impl Monkey {
             .collect()
     }
 
+    fn take_a_turn_part2(&mut self) -> Vec<Throw> {
+        println!("Monkey {}'s turn", self.id);
+        self.held_items.drain(0..).enumerate()
+            .inspect(|(i,_)| println!("  Inspecting item {}", i))
+            .map(|(_,item)| item)
+            .inspect(|item| println!("      Worry was {}", item.worry))
+            .update(|item| item.update_worry(&self.inspect_operation))
+            .inspect(|item| println!("      Worry is now {}", item.worry))
+            .inspect(|_| self.inspection_count += 1)
+            .map(|item| {
+                let test_result = item.eval_test(&self.test);
+                let to_monkey = if test_result { self.true_monkey } else { self.false_monkey };
+                println!("    Test was {}, throwing to {}", test_result, to_monkey);
+                Throw { item, to_monkey }
+            })
+            .collect()
+    }
+
     fn catch(&mut self, throw: Throw) {
         assert!(self.id == throw.to_monkey, "id: {}, thrown to: {}", self.id, throw.to_monkey);
         println!("  Monkey {} catches item with worry {}", self.id, throw.item.worry);
@@ -198,16 +220,26 @@ impl Monkey {
 }
 
 struct Keepaway {
-    monkeys: Vec<Monkey>
+    monkeys: Vec<Monkey>,
+    reduction_constant: i64,
 }
 
 impl Keepaway {
 
-    pub fn round(&mut self) {
+    fn new(monkeys: Vec<Monkey>) -> Self {
+        let reduction_constant = monkeys.iter().map(|m| match m.test { Test::DivisibleBy(d) => d }).product();
+        Self { monkeys, reduction_constant }
+    }
+
+    pub fn round(&mut self, part: Part) {
         for i in 0..self.monkeys.len() {
-            println!("Round {}", i);
             let (before, cur, after) = self.monkeys.split_around_mut(i).unwrap();
-            for throw in cur.take_a_turn() {
+            let throws = match part {
+                Part::One => cur.take_a_turn(),
+                Part::Two => cur.take_a_turn_part2(),
+            };
+            for mut throw in throws {
+                throw.item.worry %= self.reduction_constant * 3;
                 if throw.to_monkey < i {
                     before[throw.to_monkey].catch(throw);
                 } else {
@@ -218,6 +250,8 @@ impl Keepaway {
         }
     }
 }
+
+enum Part { One, Two }
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -237,15 +271,27 @@ fn main() -> Result<()> {
         Monkey::new(7, [73, 59, 82, 65], Add(OldValue.into(), 6.into()), 2, 4, 3),
     ];
 
-    let mut game = Keepaway { monkeys };
+    let mut game = Keepaway::new(monkeys.clone());
     
-    for _ in 0..20 {
-        game.round();
+    for i in 0..20 {
+        println!("Round {}", i);
+        game.round(Part::One);
     }
 
     let answer : isize = game.monkeys.iter().map(|m| -(m.inspection_count as isize)).k_smallest(2).product();
 
     println!("part 1 answer is {}", answer);
+
+    let mut game = Keepaway::new(monkeys.clone());
+    
+    for i in 0..10_000 {
+        println!("Round {}", i);
+        game.round(Part::Two);
+    }
+
+    let answer : isize = game.monkeys.iter().map(|m| -(m.inspection_count as isize)).k_smallest(2).product();
+
+    println!("part 2 answer is {}", answer);
 
     Ok(())
 }
