@@ -165,25 +165,32 @@ fn main() -> Result<()> {
 
     let extent = max_extent(walls.iter().map(Wall::max_extent));
 
-    let mut grid = grid::Grid::fill(extent.col+1, extent.row+1, Cell::Air);
+    let mut grid = grid::Grid::fill(2*extent.col+1, extent.row+2, Cell::Air);
+
+    grid.push_row(vec![Cell::Rock; grid.width()]).map_err(|_| eyre!("Couldn't push a row"))?;
 
     walls.iter().for_each(|w| w.add_to_grid(&mut grid));
 
     let mut sim = SandSimulator::new(grid);
 
     for i in 0.. {
+        if i % 100 == 0 {
+            println!("sand grain {}", i);
+        println!("{}", sim.grid);
+        }
         let final_pos = {
             let mut falling_sand = sim.add_sand();
             falling_sand.sand_rest().clone()
         };
 
-        println!("{}", sim.grid);
-        sleep(Duration::from_millis(10));
-        if !sim.grid.in_bounds(&final_pos) {
-            println!("After {} units, sand falls out the bottom", i);
-            break;
+        //println!("{}", sim.grid);
+        sleep(Duration::from_millis(5));
+        if sim.grid[&sim.sand_source] != Cell::Air {
+            println!("After {} units, sand blocks the source", i+1);
+            break
         }
     }
+        println!("{}", sim.grid);
 
     Ok(())
 }
