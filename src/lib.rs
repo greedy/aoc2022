@@ -1,4 +1,5 @@
 pub mod inputs;
+pub mod grid;
 
 pub mod prelude {
     pub use clap::Parser;
