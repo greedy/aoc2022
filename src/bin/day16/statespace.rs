@@ -1,7 +1,8 @@
 use aoc2022::bitset::BitSet;
 use itertools::Itertools;
 use crate::caverns::*;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
+use petgraph::{prelude::*, visit::{IntoNodeReferences, NodeRef}};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Action {
@@ -26,9 +27,9 @@ impl State {
         !self.open_valves.contains(self.room_id as u32)
     }
 
-    pub fn move_to(&self, next_room: usize) -> State {
+    pub fn move_to(&self, space: &StateSpace, next_room: usize) -> State {
         State {
-            time: self.time + 1,
+            time: self.time + space.path_lengths[&(space.room_node_ids[self.room_id], space.room_node_ids[next_room])],
             room_id: next_room,
             open_valves: self.open_valves
         }
@@ -45,9 +46,9 @@ impl State {
         }
     }
 
-    pub fn move_to_step(&self, next_room: usize) -> Step {
+    pub fn move_to_step(&self, space: &StateSpace, next_room: usize) -> Step {
         let from = self.clone();
-        let to = self.move_to(next_room);
+        let to = self.move_to(space, next_room);
         let action = Action::Move;
         Step { from, to, action }
     }
@@ -86,6 +87,10 @@ const ERUPTION_TIME : u32 = 30;
 
 pub struct StateSpace<'a> {
     caverns: &'a Caverns,
+    cavern_graph: CavernGraph<'a>,
+    path_lengths: HashMap<(NodeIndex<u32>, NodeIndex<u32>), u32>,
+    room_node_ids: Vec<NodeIndex<u32>>,
+    valve_room_ids: Vec<usize>,
     initial_state: State,
     max_score: u32,
 }
@@ -99,7 +104,14 @@ impl<'a> StateSpace<'a> {
             let open_valves = 0;
             State { time, room_id, open_valves }
         };
-        Self { max_score, caverns, initial_state }
+        let cavern_graph = caverns.build_graph();
+        let valve_room_ids = caverns.rooms().enumerate().filter_map(|(id, r)| if r.valve_rate() > 0 { Some(id) } else { None }).collect();
+        let path_lengths = cavern_graph.shortest_paths();
+        let mut room_node_ids = vec![NodeIndex::end(); cavern_graph.graph().node_count()];
+        cavern_graph.graph().node_references().for_each(|noderef| {
+            room_node_ids[noderef.weight().0] = noderef.id();
+        });
+        Self { max_score, caverns, cavern_graph, valve_room_ids, initial_state, path_lengths, room_node_ids }
     }
 
     pub fn initial_state(&self) -> &State {
@@ -248,7 +260,8 @@ mod graph_traits {
                 } else {
                     NeighborStage::EmitMoves
                 };
-            let connected_rooms_iter = Box::new(state_space.caverns.neighbor_ids(state_space.caverns.room(from.room_id)).map(|x| x.unwrap()));
+            let open_valves = from.open_valves;
+            let connected_rooms_iter = Box::new(state_space.valve_room_ids.iter().copied().filter(move |vid| !open_valves.contains(*vid as u32)));
             let wait_ticks = 1..=(30 - from.time());
             Self { state_space, from, stage, connected_rooms_iter, wait_ticks }
         }
@@ -265,7 +278,7 @@ mod graph_traits {
                     Some(self.from.open_valve_step())
                 }
                 NeighborStage::EmitMoves => {
-                    if let Some(step) = self.connected_rooms_iter.next().map(|next_room_id| self.from.move_to_step(next_room_id)) {
+                    if let Some(step) = self.connected_rooms_iter.next().map(|next_room_id| self.from.move_to_step(self.state_space, next_room_id)) {
                         Some(step)
                     } else {
                         self.stage = NeighborStage::EmitWaits;
@@ -279,25 +292,11 @@ mod graph_traits {
         }
     }
 
-    pub struct NeighborsFrom<'a> {
-        state_space: &'a StateSpace<'a>,
-        from: State,
-        stage: NeighborStage,
-        connected_rooms_iter: Box<dyn Iterator<Item = usize> + 'a>,
-        wait_ticks: RangeInclusive<u32>,
-    }
+    pub struct NeighborsFrom<'a>(StepsFrom<'a>);
     
     impl<'a> NeighborsFrom<'a> {
         fn new(state_space: &'a StateSpace<'a>, from: State) -> Self {
-            let stage =
-                if from.can_open_valve() {
-                    NeighborStage::EmitOpen
-                } else {
-                    NeighborStage::EmitMoves
-                };
-            let connected_rooms_iter = Box::new(state_space.caverns.neighbor_ids(state_space.caverns.room(from.room_id)).map(|x| x.unwrap()));
-            let wait_ticks = 1..=(30 - from.time());
-            Self { state_space, from, stage, connected_rooms_iter, wait_ticks }
+            Self(StepsFrom::new(state_space, from))
         }
     }
 
@@ -305,24 +304,7 @@ mod graph_traits {
         type Item = State;
 
         fn next(&mut self) -> Option<Self::Item> {
-            if self.from.time >= ERUPTION_TIME { return None }
-            match self.stage {
-                NeighborStage::EmitOpen => {
-                    self.stage = NeighborStage::EmitMoves;
-                    Some(self.from.open_valve())
-                }
-                NeighborStage::EmitMoves => {
-                    if let Some(step) = self.connected_rooms_iter.next().map(|next_room_id| self.from.move_to(next_room_id)) {
-                        Some(step)
-                    } else {
-                        self.stage = NeighborStage::EmitWaits;
-                        self.next()
-                    }
-                },
-                NeighborStage::EmitWaits => {
-                    self.wait_ticks.next().map(|ticks| self.from.wait(ticks))
-                },
-            }
+            self.0.next().map(|step| step.to)
         }
     }
 

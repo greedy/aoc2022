@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use petgraph::prelude::*;
+
 #[derive(Debug)]
 pub struct Room {
     name: String,
@@ -72,5 +74,45 @@ impl Caverns {
     pub fn room(&self, id: usize) -> &Room {
         &self.rooms[id]
     }
+
+    pub fn build_graph(&self) -> CavernGraph {
+        CavernGraph::new(self)
+    }
 }
 
+pub struct CavernGraph<'a> {
+    name_to_index: HashMap<&'a str, NodeIndex<u32>>,
+    graph: DiGraph<(usize, &'a Room), u32>
+}
+
+impl<'a> CavernGraph<'a> {
+
+    fn new(caverns: &'a Caverns) -> Self {
+        let mut name_to_index = HashMap::new();
+        let mut graph = DiGraph::new();
+        caverns.rooms().enumerate().for_each(|ent@(id, room)| {
+            let ix = graph.add_node(ent);
+            name_to_index.insert(room.name.as_str(), ix);
+        });
+        caverns.rooms().enumerate().for_each(|ent@(id, room)| {
+            let src = name_to_index[room.name.as_str()];
+            room.tunnels.iter().for_each(|dest_name| {
+                let dst = name_to_index[dest_name.as_str()];
+                graph.add_edge(src, dst, 1);
+            });
+        });
+        Self { name_to_index, graph }
+    }
+
+    pub fn graph(&'a self) -> &DiGraph<(usize, &'a Room), u32> {
+        &self.graph
+    }
+
+    pub fn room_index(&'a self, room: &'a Room) -> NodeIndex<u32> {
+        self.name_to_index[room.name.as_str()]
+    }
+
+    pub fn shortest_paths(&'a self) -> HashMap<(NodeIndex<u32>, NodeIndex<u32>), u32> {
+        petgraph::algo::floyd_warshall(&self.graph, |e| 1).unwrap()
+    }
+}
