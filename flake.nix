@@ -18,7 +18,7 @@
         mkShell {
           buildInputs =
             [ rust-bin.stable.latest.default rust-analyzer clippy ] # cargo rustc rustfmt pre-commit rustPackages.clippy rust-analyzer ]
-            ++ nixpkgs.lib.optional stdenv.isDarwin (with darwin.apple_sdk.frameworks; [ Security ]);
+            ++ nixpkgs.lib.optional stdenv.isDarwin (with darwin.apple_sdk.frameworks; [ Security OpenGL ApplicationServices AppKit ]);
           RUST_SRC_PATH = rustPlatform.rustLibSrc;
         };
       });
