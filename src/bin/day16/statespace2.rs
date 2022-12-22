@@ -357,6 +357,8 @@ mod graph_traits {
                             }
                             let mut to = self.from.clone();
                             to.my_state = inner_step.to;
+                            to.my_state.open_valves = to.opening_valves();
+                            to.elephant_state.open_valves = to.opening_valves();
                             let step = Step { from: self.from, to: to, action: Action { who: self.who, action: inner_step.action } };
                             return Some(step);
                         }
@@ -370,6 +372,8 @@ mod graph_traits {
                             }
                             let mut to = self.from.clone();
                             to.elephant_state = inner_step.to;
+                            to.my_state.open_valves = to.opening_valves();
+                            to.elephant_state.open_valves = to.opening_valves();
                             let step = Step { from: self.from, to: to, action: Action { who: self.who, action: inner_step.action } };
                             return Some(step);
                         }
@@ -435,7 +439,7 @@ impl State {
         // cannot over-estimate remaining cost
         let mut closed_valves = caverns.rooms().enumerate().filter(|(id, room)| !self.opening_valves().contains(*id as u32)).map(|(_id, room)| room.valve_rate()).collect_vec();
         closed_valves.sort_by_key(|x| std::cmp::Reverse(*x));
-        let cost = (1..(26 - self.min_time())).zip(closed_valves.chunks(2).dropping(1)).map(|(ticks, chunk)| chunk.iter().map(|rate| (*rate)*ticks).sum::<u32>()).sum();
+        let cost = (0..(26 - self.min_time())).zip(closed_valves.chunks(2)).map(|(ticks, chunk)| chunk.iter().map(|rate| (*rate)*ticks).sum::<u32>()).sum();
         //dbg!(self, cost);
         cost
     }
