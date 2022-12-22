@@ -13,9 +13,9 @@ pub enum Action {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct State {
-    time: u32,
-    room_id: usize,
-    open_valves: u64
+    pub time: u32,
+    pub room_id: usize,
+    pub open_valves: u64
 }
 
 impl State {
@@ -28,10 +28,12 @@ impl State {
     }
 
     pub fn move_to(&self, space: &StateSpace, next_room: usize) -> State {
+        let mut open_valves = self.open_valves.clone();
+        open_valves.insert(next_room as u32);
         State {
-            time: self.time + space.path_lengths[&(space.room_node_ids[self.room_id], space.room_node_ids[next_room])],
+            time: self.time + 1 + space.path_lengths[&(space.room_node_ids[self.room_id], space.room_node_ids[next_room])],
             room_id: next_room,
-            open_valves: self.open_valves
+            open_valves,
         }
     }
 
@@ -78,9 +80,9 @@ impl State {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Step {
-    from: State,
-    to: State,
-    action: Action,
+    pub from: State,
+    pub to: State,
+    pub action: Action,
 }
 
 const ERUPTION_TIME : u32 = 30;
@@ -114,12 +116,28 @@ impl<'a> StateSpace<'a> {
         Self { max_score, caverns, cavern_graph, valve_room_ids, initial_state, path_lengths, room_node_ids }
     }
 
+    pub fn caverns(&self) -> &'a Caverns {
+        self.caverns
+    }
+
+    pub fn valve_room_ids(&self) -> &[usize] {
+        self.valve_room_ids.as_slice()
+    }
+
     pub fn initial_state(&self) -> &State {
         &self.initial_state
     }
 
     pub fn max_score(&self) -> u32 {
         self.max_score
+    }
+    
+    pub fn node_for_id(&self, room_id: usize) -> NodeIndex<u32> {
+        self.room_node_ids[room_id]
+    }
+
+    pub fn travel_time(&self, from_room_id: usize, to_room_id: usize) -> u32 {
+        self.path_lengths[&(self.node_for_id(from_room_id), self.node_for_id(to_room_id))]
     }
 }
 
@@ -254,15 +272,11 @@ mod graph_traits {
 
     impl<'a> StepsFrom<'a> {
         fn new(state_space: &'a StateSpace<'a>, from: State) -> Self {
-            let stage =
-                if from.can_open_valve() {
-                    NeighborStage::EmitOpen
-                } else {
-                    NeighborStage::EmitMoves
-                };
+            let stage = NeighborStage::EmitMoves;
             let open_valves = from.open_valves;
             let connected_rooms_iter = Box::new(state_space.valve_room_ids.iter().copied().filter(move |vid| !open_valves.contains(*vid as u32)));
-            let wait_ticks = 1..=(30 - from.time());
+            //let wait_ticks = u32::max(1, u32::saturating_sub(26, from.time()))..=(30 - from.time());
+            let wait_ticks = (30 - from.time())..=(30 - from.time());
             Self { state_space, from, stage, connected_rooms_iter, wait_ticks }
         }
     }
@@ -273,10 +287,7 @@ mod graph_traits {
         fn next(&mut self) -> Option<Self::Item> {
             if self.from.time >= ERUPTION_TIME { return None }
             match self.stage {
-                NeighborStage::EmitOpen => {
-                    self.stage = NeighborStage::EmitMoves;
-                    Some(self.from.open_valve_step())
-                }
+                NeighborStage::EmitOpen => unreachable!(),
                 NeighborStage::EmitMoves => {
                     if let Some(step) = self.connected_rooms_iter.next().map(|next_room_id| self.from.move_to_step(self.state_space, next_room_id)) {
                         Some(step)

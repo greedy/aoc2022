@@ -1,10 +1,11 @@
 use aoc2022::prelude::*;
 use itertools::{process_results, Itertools};
-use petgraph::prelude::*;
+use petgraph::{prelude::*, visit::IntoNodeIdentifiers};
 use std::collections::HashMap;
 
 mod caverns;
 mod statespace;
+mod statespace2;
 
 use caverns::*;
 
@@ -65,5 +66,18 @@ fn main() -> Result<()> {
     }
 
     println!("Pressure relief is {}", relief);
+
+    let statespace2 = statespace2::StateSpace::new(&caverns);
+
+    let (cost, path) = petgraph::algo::astar(&statespace2, *statespace2.initial_state(), |st| st.min_time() == 30 && st.max_time() == 30, |e| e.pressure_buildup(&statespace2), |st| st.path_heuristic(&caverns)).unwrap();
+
+    let relief = statespace2.max_score() - cost;
+
+    for state in path.iter() {
+        println!("{:?}", state);
+    }
+
+    println!("Pressure relief is {}", relief);
+
     Ok(())
 }
