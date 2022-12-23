@@ -19,14 +19,20 @@ enum Cell {
 
 use Cell::*;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Line([Cell; Line::WIDTH]);
 
 impl Line {
     const WIDTH: usize = 7;
+    const FULL: Line = Line([Full; Line::WIDTH]);
+    const CLEAR: Line = Line([Empty; Line::WIDTH]);
 
     fn is_clear(&self) -> bool {
         self.0.iter().all(|x| *x == Empty)
+    }
+
+    fn is_full(&self) -> bool {
+        self.0.iter().all(|x| *x == Full)
     }
 }
 
@@ -52,13 +58,19 @@ impl IndexMut<usize> for Line {
 
 struct Well {
     lines: Vec<Line>,
+    floor_offset: usize,
 }
 
 impl Default for Well {
     fn default() -> Self {
         let lines = vec![Line::default(); 3];
-        Self { lines }
+        Self { lines, floor_offset: 0 }
     }
+}
+
+enum NoPhysicalLine {
+    BelowVirtualFloor,
+    AboveLines
 }
 
 impl Well {
@@ -67,8 +79,37 @@ impl Well {
     }
 
     fn ensure_height(&mut self, height: usize) {
-        if self.lines.len() < height {
-            self.lines.resize(height, Line::default());
+        if self.lines.len() + self.floor_offset < height {
+            self.lines.resize(height - self.floor_offset, Line::CLEAR);
+        }
+    }
+
+    fn phys_line(&self, logical_line: usize) -> Result<usize, NoPhysicalLine> {
+        if logical_line < self.floor_offset {
+            Err(NoPhysicalLine::BelowVirtualFloor)
+        } else {
+            let phys_line = logical_line - self.floor_offset;
+            if phys_line >= self.lines.len() {
+                Err(NoPhysicalLine::AboveLines)
+            } else {
+                Ok(phys_line)
+            }
+        }
+    }
+
+    fn line(&self, line_num: usize) -> &Line {
+        match self.phys_line(line_num) {
+            Ok(phys_line) => &self.lines[phys_line],
+            Err(NoPhysicalLine::AboveLines) => &Line::CLEAR,
+            Err(NoPhysicalLine::BelowVirtualFloor) => &Line::FULL,
+        }
+    }
+
+    fn line_mut(&mut self, line_num: usize) -> Option<&mut Line> {
+        if let Ok(phys_line) = self.phys_line(line_num) {
+            Some(&mut self.lines[phys_line])
+        } else {
+            None
         }
     }
 }
@@ -77,14 +118,13 @@ impl Index<&Coord> for Well {
     type Output = Cell;
 
     fn index(&self, index: &Coord) -> &Self::Output {
-        self.lines.get(index.line).map(|line| &line[index.column]).unwrap_or(&Empty)
+        &self.line(index.line)[index.column]
     }
 }
 
 impl IndexMut<&Coord> for Well {
     fn index_mut(&mut self, index: &Coord) -> &mut Self::Output {
-        self.ensure_height(index.line + 1);
-        &mut self.lines[index.line][index.column]
+        &mut self.line_mut(index.line).unwrap()[index.column]
     }
 }
 
@@ -99,10 +139,10 @@ impl Well {
 
     fn highest_occupied_line(&self) -> Option<usize> {
         let clear_at_top = self.lines.iter().rev().take_while(|l| l.is_clear()).count();
-        if self.lines.len() == clear_at_top {
+        if self.floor_offset == 0 && self.lines.len() == clear_at_top {
             None
         } else {
-            Some(self.lines.len() - clear_at_top)
+            Some(self.lines.len() - clear_at_top + self.floor_offset)
         }
     }
 }
@@ -364,10 +404,19 @@ impl Shape {
 
 impl Well {
     fn add(&mut self, rock: &Positioned<Shape>) {
+        self.ensure_height(rock.position.line + rock.item.height());
         for coord in rock.occupied_coords() {
             debug_assert!(!self.is_filled(coord));
             self.fill(coord)
         }
+        /*
+        if let Some(new_floor) = rock.occupied_coords().into_iter().map(|c| c.line).filter(|l| self.line(*l).is_full()).min() {
+            assert!(new_floor >= self.floor_offset);
+            //dbg!(new_floor);
+            self.lines.drain(0..(new_floor - self.floor_offset));
+            self.floor_offset = new_floor;
+        }
+        */
     }
 }
 
@@ -462,7 +511,7 @@ struct Simulator {
     jets: Box<dyn Iterator<Item = Direction>>,
     shapes: Box<dyn Iterator<Item = Shape>>,
     falling_rock: Option<(usize, Positioned<Shape>)>,
-    rock_count: u32,
+    rock_count: usize,
 }
 
 impl Simulator {
@@ -498,24 +547,151 @@ impl Simulator {
     }
 }
 
+#[derive(Debug)]
+struct Recurrence {
+    first_observed_rock_count: usize,
+    first_observed_height: usize,
+    periods: usize
+}
+
 fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
 
     let jets = cli.input.get_input()?.bytes().take_while(|b| b.iter().all(|b| !b.is_ascii_whitespace())).into_eyre().map_and_then(Direction::try_from).try_collect()?;
 
-
     if (cli.gui) {
         let window = speedy2d::Window::new_centered("Christmas Tree Rocktris", (16 * 25, 800)).unwrap();
         window.run_loop(Main::new(jets));
     } else {
-        let mut sim = Simulator::new(jets);
+        let mut sim = Simulator::new(jets.clone());
         while sim.falling_rock.is_some() || sim.rock_count < 2022 {
             sim.step();
         }
 
         println!("After 2022 rocks, the tower height is {}", sim.well.highest_occupied_line().unwrap());
+
+        let total_rocks = 1000000000000u64;
+        let period = if jets.len() % 5 == 0 { jets.len() } else { jets.len() * 5 };
+        let periods = total_rocks / period as u64;
+        let rem = total_rocks % period as u64;
+
+        let mut first_repeat: Option<Recurrence> = None;
+
+        let mut period_lines: Vec<usize> = vec![];
+
+        let mut sim = Simulator::new(jets.clone());
+        while sim.falling_rock.is_some() || sim.rock_count < total_rocks as usize {
+            // need to find when the evolution of the tower starts looping
+            if sim.falling_rock.is_none() && sim.rock_count % 1_000_000 == 0 {
+                dbg!(sim.well.lines.len());
+                dbg!(sim.rock_count);
+                dbg!(sim.well.highest_occupied_line());
+            }
+            if sim.falling_rock.is_none() && sim.rock_count % period == 0 && sim.well.highest_occupied_line().is_some() {
+                if let Some(last) = period_lines.last() {
+                    //dbg!(last, sim.well.highest_occupied_line().unwrap(), sim.well.highest_occupied_line().unwrap()-last);
+                    dbg!(sim.well.highest_occupied_line().unwrap()-last);
+                }
+                period_lines.push(sim.well.highest_occupied_line().unwrap());
+            }
+            /*
+            if sim.falling_rock.is_none() {
+                if let Some(recurrence) = &first_repeat {
+                    if sim.well.lines.len() >= recurrence.pattern_height*2{
+                        if sim.well.lines[sim.well.lines.len()-recurrence.pattern_height*2..sim.well.lines.len()]
+                            == sim.well.lines[sim.well.lines.len()-recurrence.pattern_height*4..sim.well.lines.len()-recurrence.pattern_height*2] {
+                                let recurrence_rock_period = sim.rock_count as u64 - recurrence.first_observed_rock_count as u64 ;
+                                let remaining_rocks = total_rocks - sim.rock_count as u64;
+                                let skip_recurrences = remaining_rocks / recurrence_rock_period;
+                                let skip_rocks = skip_recurrences * recurrence_rock_period;
+                                let finish_rocks = remaining_rocks - skip_rocks;
+                                let finish_rock_count = sim.rock_count + finish_rocks as usize;
+                                let skip_lines = skip_recurrences * recurrence.pattern_height as u64;
+                                let lines_here = sim.well.highest_occupied_line().unwrap();
+                                dbg!(recurrence_rock_period, remaining_rocks, skip_recurrences, skip_rocks, finish_rocks, finish_rock_count, skip_lines, lines_here);
+                                while sim.falling_rock.is_some() || sim.rock_count != finish_rock_count {
+                                    sim.step();
+                                }
+                                let total_height = sim.well.highest_occupied_line().unwrap() + skip_lines as usize;
+                                println!("The tower will be {} high", total_height);
+                                return Ok(());
+                        }
+                    }
+                }
+            }
+            if sim.falling_rock.is_none() && sim.rock_count > 2 * period && first_repeat.is_none() {
+                for pattern_height in (1..sim.well.highest_occupied_line().unwrap()/2).rev() {
+                    if sim.well.lines[sim.well.lines.len()-pattern_height..sim.well.lines.len()]
+                        == sim.well.lines[sim.well.lines.len()-pattern_height*2..sim.well.lines.len()-pattern_height] {
+                            first_repeat = Some(Recurrence {
+                                pattern_height,
+                                first_observed_rock_count: sim.rock_count,
+                                first_observed_height: sim.well.highest_occupied_line().unwrap()
+                            });
+                            dbg!(&first_repeat);
+                            break;
+                    }
+                }
+            }
+            */
+
+            if sim.falling_rock.is_none() && first_repeat.is_some() {
+                let recurrence = first_repeat.as_ref().unwrap();
+                if sim.well.lines.len() >= recurrence.first_observed_height + recurrence.periods * 2 {
+                    // check if the recurrence has recurred
+                    let first_range = sim.well.lines.len() - recurrence.periods * 2 ..sim.well.lines.len();
+                    let second_range = sim.well.lines.len() - recurrence.periods * 4..sim.well.lines.len() - recurrence.periods*2;
+                    if sim.well.lines[first_range] == sim.well.lines[second_range] {
+                        let rock_period = sim.rock_count - recurrence.first_observed_rock_count;
+                        let remaining_rocks = total_rocks as usize - sim.rock_count;
+                        let remaining_periods = remaining_rocks / rock_period;
+                        let period_lines = sim.well.lines.len() - recurrence.first_observed_height;
+                        let skip_lines = period_lines * remaining_periods;
+                        let extra_rocks = remaining_rocks - (rock_period * remaining_periods);
+                        let stop_at_rocks = sim.rock_count + extra_rocks;
+                        let current_height = sim.well.lines.len();
+                        dbg!(rock_period, remaining_rocks, remaining_periods, period_lines, skip_lines, extra_rocks, stop_at_rocks, current_height);
+                        while sim.falling_rock.is_some() || sim.rock_count < stop_at_rocks {
+                            sim.step();
+                        }
+                        let added_height = sim.well.lines.len() - current_height;
+                        let final_height = skip_lines + sim.well.lines.len();
+                        println!("The final height is {}", final_height);
+                        return Ok(())
+                    }
+                }
+            }
+            if sim.falling_rock.is_none() && sim.well.lines.len() > 2 * period && first_repeat.is_none() {
+                for repeat_len in period..sim.well.lines.len()/2 {
+                    if sim.well.lines[sim.well.lines.len() - repeat_len..sim.well.lines.len()] == sim.well.lines[sim.well.lines.len()-2*repeat_len..sim.well.lines.len()-repeat_len] {
+                        if first_repeat.is_none() {
+                            first_repeat = Some(Recurrence {
+                                first_observed_rock_count: sim.rock_count,
+                                first_observed_height: sim.well.highest_occupied_line().unwrap(),
+                                periods: repeat_len
+                            });
+                        }
+                        println!("Repeat at lines={} highest={} periods={} periods*period={} rock_count={}", sim.well.lines.len(), sim.well.highest_occupied_line().unwrap(), repeat_len, repeat_len*period, sim.rock_count);
+                    }
+                }
+            }
+            /*
+            if sim.falling_rock.is_none() && sim.rock_count > 2 * period {
+                for repeat_len in period..sim.well.lines.len()/2 {
+                    if sim.well.lines[sim.well.lines.len() - repeat_len..sim.well.lines.len()] == sim.well.lines[sim.well.lines.len()-2*repeat_len..sim.well.lines.len()-repeat_len] {
+                        println!("Repeating sequence of len {} lines at height={} rocks={}", repeat_len, sim.well.lines.len(), sim.rock_count);
+                    }
+                }
+            }
+            */
+            sim.step();
+        }
+        let height = sim.well.highest_occupied_line().unwrap() as u64;
+
+        println!("After a bunch of rocks the tower is {} units tall", sim.well.highest_occupied_line().unwrap());
     }
+
 
     Ok(())
 }
