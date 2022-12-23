@@ -1,3 +1,5 @@
+use std::borrow::Borrow;
+use std::fmt::Debug;
 use std::str::FromStr;
 
 use aoc2022::prelude::*;
@@ -11,6 +13,7 @@ struct Cli {
     input: InputCLI<21>
 }
 
+#[derive(Debug)]
 enum Op {
     Add,
     Subtract,
@@ -32,6 +35,7 @@ impl FromStr for Op {
     }
 }
 
+#[derive(Debug)]
 enum Expression {
     Const(i64),
     Binary { lhs: String, op: Op, rhs: String }
@@ -63,6 +67,25 @@ struct Monkey<'a> {
     rhs_value: Cell<Option<i64>>,
     yelled: Cell<Option<i64>>,
 }
+
+impl<'a> Debug for Monkey<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Monkey")
+            .field("name", &self.name)
+            .field("expr", &self.expr)
+            .field("waiters", &{
+                let waiters = self.waiters.take();
+                let names = waiters.iter().map(|m| m.name.as_str()).collect_vec();
+                self.waiters.set(waiters);
+                names
+            })
+        .field("lhs_value", &self.lhs_value)
+            .field("rhs_value", &self.rhs_value)
+            .field("yelled", &self.yelled)
+            .finish()
+    }
+}
+
 
 impl<'a> Monkey<'a> {
     fn new(name: String, expr: Expression) -> Self {
@@ -122,11 +145,47 @@ impl<'a> FromStr for Monkey<'a> {
     }
 }
 
+fn solve(monkeys: &HashMap<String, &mut Monkey>, monkey: &Monkey, target: i64) -> Result<i64> {
+    dbg!(monkey);
+    if monkey.name == "humn" {
+        Ok(target)
+    } else {
+        match &monkey.expr {
+            Expression::Const(_) => bail!("solving a const!"),
+            Expression::Binary { lhs, op, rhs } => {
+                if let Some(lhs_value) = monkey.lhs_value.get() {
+                    let rhs = monkeys.get(rhs).expect("rhs to exist");
+                    match op {
+                        Op::Add => solve(monkeys, rhs, target - lhs_value),
+                        // lhs - rhs = target ==> lhs = rhs + target ==> lhs - target = rhs
+                        Op::Subtract => solve(monkeys, rhs, lhs_value - target),
+                        Op::Multiply => solve(monkeys, rhs, target / lhs_value),
+                        // lhs / rhs = target ==> lhs = target * rhs ==> lhs / target = rhs
+                        Op::Divide => solve(monkeys, rhs, lhs_value / target)
+                    }
+                } else if let Some(rhs_value) = monkey.rhs_value.get() {
+                    let lhs = monkeys.get(lhs).expect("rhs to exist");
+                    match op {
+                        Op::Add => solve(monkeys, lhs, target - rhs_value),
+                        // lhs - rhs = target ==> lhs = target + rhs
+                        Op::Subtract => solve(monkeys, lhs, target + rhs_value),
+                        Op::Multiply => solve(monkeys, lhs, target / rhs_value),
+                        // lhs / rhs = target ==> lhs = target * rhs 
+                        Op::Divide => solve(monkeys, lhs, target * rhs_value)
+                    }
+                } else {
+                    bail!("neither side had yelled");
+                }
+            }
+        }
+    }
+}
+
 fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
 
-    let mut monkeys: typed_arena::Arena<Monkey> = typed_arena::Arena::new();
+    let monkeys: typed_arena::Arena<Monkey> = typed_arena::Arena::new();
     let mut monkeys_by_name = HashMap::new();
 
     for line in cli.input.get_input()?.lines() {
@@ -154,14 +213,28 @@ fn main() -> Result<()> {
     }
 
     for monkey in monkeys_by_name.values() {
-        if matches!(monkey.expr, Expression::Const(_)) {
+        if matches!(monkey.expr, Expression::Const(_)) && monkey.name != "humn" {
             monkey.yell();
         }
     }
 
-    let root_value = monkeys_by_name.get("root").expect("a monkey named root").yelled.get().expect("root yelled");
-    
-    println!("root yells {}", root_value);
+    let root = monkeys_by_name.get("root").expect("a monkey named root");
+
+    let (root_lhs, root_rhs) = match &root.expr {
+        Expression::Const(_) => bail!("root monkey should be a binary op"),
+        Expression::Binary { lhs, op:_, rhs } => {
+            (monkeys_by_name.get(lhs).expect("root's lhs to exist"),
+            monkeys_by_name.get(rhs).expect("root's rhs to exist"))
+        }
+    };
+
+    let solution = if root_lhs.yelled.get().is_none() {
+        solve(&monkeys_by_name, root_lhs, root_rhs.yelled.get().expect("rhs to have yelled"))
+    } else {
+        solve(&monkeys_by_name, root_rhs, root_lhs.yelled.get().expect("lhs to have yelled"))
+    }?;
+
+    println!("Solution is {}", solution);
 
     Ok(())
 }
