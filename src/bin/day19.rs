@@ -153,7 +153,7 @@ fn main() -> Result<()> {
 
     let mut quality = 0;
 
-    for blueprint in blueprints {
+    for blueprint in blueprints.iter() {
         dbg!(&blueprint);
         let mut states = vec![StateCollection::from([State::INITIAL])];
         for _minute in 1..=24 {
@@ -170,6 +170,24 @@ fn main() -> Result<()> {
     }
 
     println!("Total quality is {}", quality);
+
+    let mut product_product = 1;
+
+    for blueprint in blueprints[0..3].iter() {
+        let mut states = vec![StateCollection::from([State::INITIAL])];
+        for _minute in 1..=32 {
+            let mut next_states = StateCollection::new();
+            states.last().unwrap().0.iter().flat_map(|s| s.successors(&blueprint)).for_each(|s| next_states.add(s));
+            dbg!(_minute, next_states.0.len());
+            //dbg!(&next_states);
+            states.push(next_states);
+        }
+        let max_geodes = states.last().unwrap().0.iter().map(|s| s.geode_count).max().unwrap();
+        println!("Blueprint {} produces {} geodes", blueprint.id, max_geodes);
+        product_product *= max_geodes;
+    }
+
+    println!("Product of production is {}", product_product);
 
     Ok(())
 }
