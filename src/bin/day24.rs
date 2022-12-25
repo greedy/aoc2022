@@ -82,7 +82,8 @@ impl Valley {
     }
 
     pub fn is_wall(&self, coord: &Coord) -> bool {
-        coord.x == self.width - 1 || coord.x == 0
+        coord.y >= self.height || coord.x >= self.width
+            || coord.x == self.width - 1 || coord.x == 0
             || (coord.y == 0 && coord.x > 1)
             || (coord.y == self.height - 1 && coord.x < self.width - 2)
     }
@@ -143,8 +144,11 @@ fn main() -> Result<()> {
 
     let mut valley = Valley::from_map(input.as_str());
 
+    let origin = Coord { x: 1, y: 0 };
     let target = Coord { y: valley.height - 1, x: valley.width - 2 };
-    let mut frontier = HashSet::from([Coord { x: 1, y: 0 }]);
+
+    dbg!(valley.width, valley.height, origin, target);
+    let mut frontier = HashSet::from([origin]);
     let mut steps = 0;
 
     loop {
@@ -156,6 +160,29 @@ fn main() -> Result<()> {
     }
 
     println!("Escape in {} steps", steps);
+
+    frontier = HashSet::from([target]);
+    loop {
+        frontier = valley.next_frontier(frontier);
+        steps +=1 ;
+        if frontier.is_empty() {bail!("Frontier became empty!") }
+        if frontier.contains(&origin) { break; }
+        dbg!(steps, frontier.len());
+    }
+
+    println!("Return in {} steps", steps);
+
+    frontier = HashSet::from([origin]);
+    loop {
+        frontier = valley.next_frontier(frontier);
+        steps += 1;
+        if frontier.is_empty() { bail!("Frontier became empty!") }
+        if frontier.contains(&target) { break; }
+        dbg!(steps, frontier.len());
+    }
+
+    println!("Escape again in {} steps", steps);
+
 
     Ok(())
 }
