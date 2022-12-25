@@ -102,6 +102,7 @@ impl std::ops::Add<Direction> for &Coord {
     }
 }
 
+#[derive(Clone)]
 struct Grove {
     elf_positions: HashSet<Coord>,
     proposed_moves: HashMap<Coord, Vec<Coord>>,
@@ -173,7 +174,7 @@ impl Grove {
         }
     }
 
-    fn apply_proposal(&mut self) {
+    fn apply_proposal(&mut self) -> bool {
         let mut next = HashSet::new();
         for (proposal, elfs) in self.proposed_moves.iter() {
             if elfs.len() == 1 {
@@ -182,13 +183,19 @@ impl Grove {
                 next.extend(elfs);
             }
         }
-        self.elf_positions = next;
+        if self.elf_positions == next {
+            false
+        } else {
+            self.elf_positions = next;
+            true
+        }
     }
 
-    fn round(&mut self) {
+    fn round(&mut self) -> bool {
         self.propose();
-        self.apply_proposal();
+        let changed = self.apply_proposal();
         self.direction_order.as_mut_slice().rotate_left(1);
+        changed
     }
 
     fn occupied_rectangle(&self) -> Rectangle {
@@ -223,19 +230,33 @@ fn main() -> Result<()> {
     let mut input = String::new();
     cli.input.get_input()?.read_to_string(&mut input)?;
 
-    let mut grove = Grove::from_map(input.as_str());
-    println!("Intitial state");
-    grove.dump()?;
-
-    for round_num in 1..=10 {
-        grove.round();
-        println!("After round {}", round_num);
+    {
+        let mut grove = Grove::from_map(input.as_str());
+        println!("Intitial state");
         grove.dump()?;
+
+        for round_num in 1..=10 {
+            grove.round();
+            println!("After round {}", round_num);
+            grove.dump()?;
+        }
+
+        let empty_tiles = grove.occupied_rectangle().area() - grove.elf_count();
+
+        println!("{} empty tiles", empty_tiles);
     }
 
-    let empty_tiles = grove.occupied_rectangle().area() - grove.elf_count();
-
-    println!("{} empty tiles", empty_tiles);
+    {
+        let mut grove = Grove::from_map(input.as_str());
+        let mut rounds = 0;
+        loop {
+            rounds += 1;
+            if !grove.round() {
+                break;
+            }
+        }
+        println!("No elf moves in round {}", rounds);
+    }
 
     Ok(())
 }
